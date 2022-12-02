@@ -1,0 +1,106 @@
+package platform.investors
+
+use platform.helper.ShareOfferSpecifications
+use platform.legalContracts.NDA
+use platform.legalContracts.ShareholderAgreement
+use platform.financialInstruments.ShareClass
+use platform.project.Project
+use platform.trading.SubscriptionOffer
+use platform.trading.TradeAgreement
+use platform.wallet.Wallet
+
+protocol[pBank, pPlatform, pInvestor] Investor(var firstName: Text, var lastName: Text, var email: Text, var accountHash: Text) {
+    var walletList = setOf<Wallet>();
+    var lexKollerCompliant: Boolean = false;
+    var lawCompliant: Boolean = false;
+    var offers = setOf<SubscriptionOffer>();
+    var ndaPerProject = setOf<NDA>();
+    var shareholderAgreementPerShareClass = setOf<ShareholderAgreement>();
+    var tradeAgreements = setOf<TradeAgreement>();
+
+
+
+    // Logic to add items
+    permission[pInvestor] addTradeAgreement(ta: TradeAgreement) {
+        tradeAgreements = tradeAgreements.with(ta);
+    };
+
+    permission[pBank] addOffer(offer: SubscriptionOffer) {
+        offers = offers.with(offer);
+    };
+
+    permission[pInvestor] addNda(nda: NDA) {
+        ndaPerProject = ndaPerProject.with(nda);
+    };
+
+    permission[pInvestor] addShareholderAgreement(sa: ShareholderAgreement) {
+        shareholderAgreementPerShareClass = shareholderAgreementPerShareClass.with(sa);
+    };
+
+    // Compliance Logic
+    permission[pBank] setCompliant(status: Boolean){
+        this.setLawCompliant[pBank](status);
+        this.setLexKollerCompliant[pBank](status);
+    };
+
+    permission[pBank] setLexKollerCompliant(status: Boolean){
+        lexKollerCompliant = status;
+    };
+
+    permission[pBank] setLawCompliant(status: Boolean){  // needs to be moved to project protocol
+        lawCompliant = status;
+    };
+
+    permission[pBank] isCompliant() returns Boolean {
+        return (lexKollerCompliant && lawCompliant);
+    };
+
+    // Offer Logic
+    permission[pPlatform | pBank] makeOffer(project: Project, expirationDate: DateTime, specifications: ShareOfferSpecifications, shareClass: ShareClass) returns SubscriptionOffer {
+        var offer = SubscriptionOffer[pBank, pPlatform, pInvestor](this, expirationDate, specifications, shareClass);
+        this.addOffer[pBank](offer);
+        return offer;
+    }
+
+    // Wallet Logic
+    permission[pBank] createWalletPerProject(p: Project) {
+        var wallet: Wallet = Wallet[pBank, pInvestor](this, p);
+        walletList = walletList.with(wallet);
+    };
+
+    function isWalletPerProjectPresent(project: Project) returns Boolean -> {
+        return walletList.filter(function(w: Wallet) ->
+            w.project == project).toList().firstOrNone().isPresent();
+    };
+
+    permission[ pBank | pInvestor] returnWalletPerProject(project: Project) returns Wallet {
+        guard (isWalletPerProjectPresent(project), "Wallet for the specified project is not present.");
+        return walletList.filter(function(w: Wallet) ->
+            w.project == project).toList().firstOrNone().getOrFail();
+    };
+
+    // Non Disclosure Agreements Logic
+    permission[pInvestor | pPlatform | pBank] isNdaPerProjectPresent(project: Project) returns Boolean {
+        return ndaPerProject.filter(function(n: NDA) ->
+            n.project == project).toList().firstOrNone().isPresent();
+    };
+
+    permission[pInvestor | pPlatform | pBank] returnNdaPerProject(project: Project) returns NDA {
+        guard (this.isNdaPerProjectPresent[pBank](project), "Wallet for the specified project is not present.");
+        return ndaPerProject.filter(function(n: NDA) ->
+            n.project == project).toList().firstOrNone().getOrFail();
+    };
+
+    // Shareholder Agreements Logic
+    permission[pInvestor | pPlatform | pBank] isSAPerProjectPresent(shareClass: ShareClass) returns Boolean {
+        return shareholderAgreementPerShareClass.filter(function(sa: ShareholderAgreement) ->
+            sa.template.shareClass == shareClass).toList().firstOrNone().isPresent();
+    };
+
+    permission[pInvestor | pPlatform | pBank] returnSAPerProject(shareClass: ShareClass) returns ShareholderAgreement {
+        guard (this.isSAPerProjectPresent[pBank](shareClass), "Wallet for the specified project is not present.");
+        return shareholderAgreementPerShareClass.filter(function(sa: ShareholderAgreement) ->
+            sa.template.shareClass == shareClass).toList().firstOrNone().getOrFail();
+    };
+
+};

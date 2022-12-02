@@ -1,0 +1,28 @@
+package platform.financialInstruments
+
+use platform.helper.CHF
+use platform.helper.pBank
+use platform.helper.pPlatform
+use platform.project.Project
+
+@test
+function testCreateShareClass(test: Test) -> {
+    var project = Project[pPlatform, pBank]("PP Project 1", CHF(50000000));
+
+    test.assertTrue(project.shareClasses.size() == 0, "There are no shareClasses at the creation of a Project");
+
+    var shareClassA = project.createShareClass[pBank]("A", project.projectValue/2,50000,25000);
+
+    test.assertTrue(project.shareClasses.size() == 1 && project.returnShareClass[pBank]("A") == shareClassA,
+        "The share class has been successfully created and added to the project");
+    test.assertFailsWith(function() -> project.createShareClass[pBank]("A", project.projectValue,100000,10000), 14,
+        "Creation of second share class fails, since the cummulative value exceeds the project value");
+
+    var shareClassB = project.createShareClass[pBank]("B", project.projectValue/2,50000,25000);
+
+    test.assertTrue(project.shareClasses.size() == 2 && project.returnShareClass[pBank]("B") == shareClassB,
+        "A second share class has been created");
+    test.assertTrue(project.availableAmountForSubscriptions.toNumber() == 0, "All project value has been allocated to a share class");
+
+};
+

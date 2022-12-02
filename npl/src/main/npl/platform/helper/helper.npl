@@ -1,0 +1,16 @@
+package platform.helper
+
+symbol CHF;
+
+
+struct ShareOfferSpecifications {
+    minNumberOfShares: Number,
+    maxNumberOfShares: Number,
+    initialSharePrice: CHF
+};
+
+struct SubscriptionAmount {
+    oversubscribed: Boolean,
+    amount: CHF,
+    shares: Number
+}

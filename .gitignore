@@ -1,0 +1,8 @@
+Cargo.lock
+target
+casper/tests/wasm/*.wasm
+api/src/main/resources/*.wasm
+.idea
+.DS_Store
+.vscode
+*.iml

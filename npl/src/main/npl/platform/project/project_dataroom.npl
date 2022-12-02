@@ -1,0 +1,111 @@
+package platform.project
+
+use platform.financialInstruments.ShareClass
+
+@api
+protocol[pPlatform, pBank] ProjectDataroom() {
+    var data = setOf<ProjectDataroomData>();
+
+    @api
+    permission[pPlatform | pBank] addData(data: ProjectDataroomData) {
+        this.data = this.data.with(data);
+    }
+
+    permission[pPlatform | pBank] removeData(data: ProjectDataroomData) {
+        this.data = this.data.without(data);
+    }
+
+    function isPresentPremiumData() returns Boolean -> {
+        return data.map(function(d: ProjectDataroomData) returns Optional<PremiumData> ->
+            match(d) {
+                is PremiumData -> { return optionalOf<PremiumData>(d); }
+                else -> { return optionalOf<PremiumData>(); }
+            }).filter(function(i: Optional<PremiumData>) returns Boolean -> i.isPresent()).firstOrNone().isPresent();
+    };
+
+    permission[pPlatform | pBank] returnPremiumData() returns Optional<PremiumData> {
+        guard(isPresentPremiumData(), "No premium data present");
+         return data.map(function(d: ProjectDataroomData) returns Optional<PremiumData> ->
+             match(d) {
+                 is PremiumData -> { return optionalOf<PremiumData>(d); }
+                 else -> { return optionalOf<PremiumData>(); }
+             }).filter(function(i: Optional<PremiumData>) returns Boolean -> i.isPresent()).get(0);
+    }
+
+    permission[pPlatform | pBank] returnBasicData() returns Set<ProjectDataroomData> {
+        if (isPresentPremiumData()) {
+            return this.data.without(this.returnPremiumData[pBank]().getOrFail());
+        } else {
+            return this.data;
+        };
+    }
+};
+
+union ProjectDataroomData {
+    ProjectDeveloperData,
+    ProjectData,
+    DueDiligencePackage,
+    ShareholderAgreementTemplate,
+    PremiumData
+}
+
+
+@api
+protocol[pPlatform, pBank] ProjectDeveloperData() {
+
+    permission[pPlatform] returnData() returns ProjectDeveloperData {
+        return this;
+    };
+}
+
+@api
+protocol[pPlatform, pBank] ProjectData() {
+
+    permission[pPlatform] returnData() returns ProjectData {
+        return this;
+    };
+}
+
+@api
+protocol[pPlatform, pBank] DueDiligencePackage() {
+
+    permission[pPlatform] returnData() returns DueDiligencePackage {
+        return this;
+    };
+}
+
+@api
+protocol[pPlatform, pBank] ShareholderAgreementTemplate(var shareClass: ShareClass) {
+
+    var urlToShareholderAgreement: Text = "";
+    var isin= optionalOf<Text>();
+
+    init{
+        shareClass.setSATemplate[pBank](this);
+    }
+
+    permission[pPlatform] addUrl(newUrl: Text) {
+        urlToShareholderAgreement = newUrl;
+    };
+
+    @api
+    permission[pPlatform] addISIN(isin: Text) {
+        this.isin = optionalOf<Text>(isin);
+    };
+
+    permission[pPlatform] returnISIN() returns Optional<Text> {
+        return isin;
+    };
+
+    permission[pPlatform] returnData() returns ShareholderAgreementTemplate {
+        return this;
+    };
+}
+
+@api
+protocol[pPlatform, pBank] PremiumData() {
+
+    permission[pPlatform] returnData() returns PremiumData {
+        return this;
+    };
+}

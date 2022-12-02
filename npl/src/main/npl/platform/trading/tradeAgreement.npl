@@ -1,0 +1,71 @@
+package platform.trading
+
+use platform.financialInstruments.Token
+use platform.investors.Investor
+
+union TradeAgreement {
+    OffChainTradeAgreement,
+    OnChainTradeAgreement
+}
+
+protocol[pBank, pSeller, pBuyer] OffChainTradeAgreement(var buyer: Investor, var taDeadline: DateTime, var token: Token) {
+    guard(token.shareClass.project.whiteListedInvestors.contains(buyer), "The new investor is noth whitelisted");
+    guard(token.isMyToken[pSeller](), "This Token does not belong to the Seller");
+
+    initial state created;
+    state buyerAgreed;
+    state sellerAgreed;
+    final state executed;
+    final state rejected;
+
+    init {
+        token.addTradeAgreement[pSeller](this);
+        buyer.addTradeAgreement[pBuyer](this);
+        token.owner.addTradeAgreement[pSeller](this);
+    }
+
+    permission[*participant] setBuyer() | created {
+        this.pBuyer = participant;
+    };
+
+    permission[*participant] setSeller() | created {
+        this.pSeller = participant;
+    };
+
+    // PRIVATE PREMISSION - ONLY FOR TESTING PURPOSES
+    permission[pBank] private_setDeadline(deadline: DateTime) {
+        taDeadline = deadline;
+    }
+
+    obligation[pBuyer | pBank] buyerAgree() before taDeadline | created, sellerAgreed {
+        if (currentState == states.sellerAgreed) {
+            token.offChainTransfer[pSeller, pBuyer](buyer);
+            become executed;
+        } else {
+            become buyerAgreed;
+        };
+    } otherwise become rejected;
+
+    obligation[pSeller | pBank] sellerAgree() before taDeadline | created, buyerAgreed {
+        if (currentState == states.buyerAgreed) {
+            token.offChainTransfer[pSeller, pBuyer](buyer);
+            become executed;
+        } else {
+            become sellerAgreed;
+        };
+    } otherwise become rejected;
+
+};
+
+protocol[pBank, pSeller, pBuyer] OnChainTradeAgreement(var buyer: Investor, var token: Token) {
+    initial state created;
+    final state executed;
+
+    init {
+        token.addTradeAgreement[pSeller](this);
+        buyer.addTradeAgreement[pBuyer](this);
+        token.owner.addTradeAgreement[pSeller](this);
+        become executed
+    }
+};
+

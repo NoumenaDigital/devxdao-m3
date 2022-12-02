@@ -1,0 +1,35 @@
+name: DEVxDAO on push
+on: [push]
+
+env:
+  GITHUB_REPO_PASS: ${{ secrets.MAVEN_PASSWORD }}
+  GITHUB_REPO_USER: ${{ secrets.MAVEN_USERNAME }}
+  MAVEN_CLI_OPTS: -s .m2/settings.xml --batch-mode
+
+jobs:
+  build-and-test-casper-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.MAVEN_USERNAME }}
+          password: ${{ secrets.MAVEN_PASSWORD }}
+      - name: Prepare
+        run: make -e -C casper prepare
+      - name: Build and test
+        run: make -e -C casper clean test
+  build-and-test-npl-and-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.MAVEN_USERNAME }}
+          password: ${{ secrets.MAVEN_PASSWORD }}
+      - name: Build and test
+        run: make -e test

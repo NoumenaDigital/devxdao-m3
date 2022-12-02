@@ -1,0 +1,177 @@
+package platform.project
+
+use platform.helper.CHF
+use platform.helper.ShareOfferSpecifications
+use platform.helper.SubscriptionAmount
+use platform.investors.Investor
+use platform.legalContracts.NDA
+use platform.legalContracts.ShareholderAgreement
+use platform.notifications.CreateProject
+use platform.financialInstruments.ShareClass
+use platform.financialInstruments.Token
+
+@api
+protocol[pPlatform, pBank] Project(name: Text, var projectValue: CHF) {
+
+    // Wallet
+    var contractHash: Text = "";
+
+    // Shares & Liquidity
+    var availableAmountForSubscriptions: CHF = projectValue;
+    var shareClasses: List<ShareClass> = listOf<ShareClass>();
+
+    // Investor & Offers
+    var selectedInvestors: Set<Investor> = setOf<Investor>();
+    var whiteListedInvestors: Set<Investor> = setOf<Investor>();
+    var blackListedInvestors: Set<Investor> = setOf<Investor>();
+
+    // Data Room & Agreements
+    var originalOfferDeadline: Optional<DateTime> = optionalOf<DateTime>();
+    var ndaPerInvestor: Set<NDA> = setOf<NDA>();
+    var shareholderAgreementsPerInvestor: Set<ShareholderAgreement> = setOf<ShareholderAgreement>();
+    private var dataroom = ProjectDataroom[pPlatform, pBank]();
+
+    init {
+        notify CreateProject(this);
+    }
+
+    initial state created;
+    state subscribed;
+    final state projectClosed
+
+    @api
+    permission[pPlatform] getAllTokenOwners() returns List<Text> {
+        var ownerList = listOf<Text>();
+        for (sc in shareClasses) {
+            ownerList = ownerList.plus(sc.tokens.map(function (t: Token) returns Text -> t.owner.accountHash));
+        };
+        return ownerList;
+    };
+
+    // Project Setup //
+    permission[pPlatform] closeProject() | created, subscribed  {
+        become projectClosed;
+    };
+
+    permission[pPlatform] setContractHash(id: Text) | created {
+        contractHash = id;
+    };
+
+    // Share Class Mgmt //
+    permission[pBank] createShareClass(name: Text, totalValue: CHF, totalSharesNumber: Number, subscriptionShares: Number) returns ShareClass | created, subscribed {
+        var shareClass = ShareClass[pBank](this, name, totalValue, totalSharesNumber, subscriptionShares);
+        shareClasses = shareClasses.with(shareClass);
+        return shareClass;
+    };
+
+
+    @api
+    permission[pPlatform | pBank] returnShareClass(name: Text) returns ShareClass {
+        guard(shareClasses.filter(function(sc: ShareClass) returns Boolean -> sc.name == name).firstOrNone().isPresent(), "The given share class does not exist");
+        return shareClasses.filter(function(sc: ShareClass) returns Boolean -> sc.name == name).firstOrNone().getOrFail();
+    };
+
+    // Investor Mgmt //
+    function addSelectedInvestor(i: Investor) returns Unit -> {
+        selectedInvestors = selectedInvestors.with(i);
+        i.createWalletPerProject[pBank](this);
+    };
+
+    permission[pBank] selectInvestors(investors: Set<Investor>) {
+        for (i in investors) {
+            if (i.isCompliant[pBank]() && !blackListedInvestors.contains(i)) {
+                addSelectedInvestor(i);
+            } else {
+                selectedInvestors = selectedInvestors;
+            };
+        }
+    };
+
+    permission[pPlatform | pBank] addWhitelistedInvestor(investor: Investor) | created, subscribed {
+        guard(selectedInvestors.contains(investor), "The investor first must have been selected to be whitelisted");
+        guard(this.returnShareholderAgreementPerInvestor[pBank](investor).isPresent(), "There is no Shareholder Agreement present");
+        whiteListedInvestors = whiteListedInvestors.with(investor);
+    };
+
+    permission[pPlatform | pBank] removeWhitelistedInvestor(investor: Investor) | created, subscribed {
+        whiteListedInvestors = whiteListedInvestors.without(investor);
+    };
+
+
+    permission[pBank] addBlackListedInvestor(i: Investor) {
+        blackListedInvestors = blackListedInvestors.with(i);
+    };
+
+
+    // DataRoom //
+
+    @api
+    permission[pBank | pPlatform] returnProjectDataroom() returns ProjectDataroom {
+        return dataroom;
+    }
+
+    // Reuirements for Whitelisting //
+
+    permission[pBank & *pInvestor] signNDA(i: Investor) {
+        var nda = NDA[pBank, pPlatform, pInvestor](this, i);
+        nda.signNdaAndLegReq[pInvestor]();
+        this.addNda[pBank](nda);
+    };
+
+    permission[pBank] addNda(nda: NDA) {
+        ndaPerInvestor = ndaPerInvestor.with(nda);
+    };
+
+    permission[pBank] addShareholderAgreement(sa: ShareholderAgreement) {
+        shareholderAgreementsPerInvestor = shareholderAgreementsPerInvestor.with(sa);
+    };
+
+    permission[pBank] returnShareholderAgreementPerInvestor(investor: Investor) returns Optional<ShareholderAgreement> {
+        return shareholderAgreementsPerInvestor.toList().findFirstOrNone(function(sha: ShareholderAgreement) -> sha.investor == investor);
+    };
+
+    // Offering Process //
+    permission[pPlatform | pBank] setOriginalOfferDeadline(deadline: DateTime) | created, subscribed {
+        originalOfferDeadline = optionalOf(deadline);
+    }
+
+    permission[pBank | pPlatform] sendOriginalOffers(shareClassName: Text, offerDeadline: DateTime, specification: ShareOfferSpecifications) | created, subscribed {
+        this.returnShareClass[pBank](shareClassName).sendOriginalOffers[pBank](offerDeadline,specification);
+    }
+
+    permission[pPlatform] sendReminders(shareClassName: Text, reminder: Text) {
+        for (o in this.returnShareClass[pBank](shareClassName).offers) {
+            if (o.created == o.currentState) { o.remind[pPlatform](reminder); };
+        }
+    };
+
+    // Initial Subscription //
+    permission[pBank] reduceAvailableAmountForSubscription(amount: CHF) | created, subscribed {
+        guard((availableAmountForSubscriptions - amount).toNumber() >= 0, "The available amount can not be negative");
+        availableAmountForSubscriptions = availableAmountForSubscriptions - amount;
+    };
+
+    permission[pBank] checkIfProjectIsOversubscribed() returns Map<ShareClass,SubscriptionAmount> {
+        var subscriptionAmounts: Map<ShareClass,SubscriptionAmount> = mapOf<ShareClass,SubscriptionAmount>();
+        for (i in shareClasses) {
+            subscriptionAmounts = subscriptionAmounts.with(i, i.checkIfShareClassOversubscribed[pBank]());
+        };
+        return subscriptionAmounts;
+    };
+
+    permission[pBank] collectSubscriptions() | created, subscribed { // For testing purposes
+        for (sc in shareClasses) {
+          sc.collectSubscriptions[pBank]();
+        };
+    };
+
+    permission[pBank] confirmSubscriptionAgreements(shareClassName: Text) | created, subscribed {
+        this.returnShareClass[pBank](shareClassName).confirmSubscriptions[pBank]();
+        this.completeSubscriptionProcess[pBank]();
+    };
+
+    permission[pBank] completeSubscriptionProcess() | created, subscribed {
+        become subscribed;
+    };
+
+};

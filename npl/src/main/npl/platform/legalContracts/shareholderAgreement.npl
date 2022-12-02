@@ -1,0 +1,24 @@
+package platform.legalContracts
+
+use platform.investors.Investor
+use platform.notifications.RemoveWhiteListedInvestor
+use platform.project.Project
+use platform.project.ShareholderAgreementTemplate
+
+@api
+    protocol[pBank, pInvestor] ShareholderAgreement(var project: Project, var investor: Investor, var template: ShareholderAgreementTemplate) {
+
+    initial state signed;
+    final state revoked;
+
+    init{
+        investor.addShareholderAgreement[pInvestor](this);
+        project.addShareholderAgreement[pBank](this);
+    }
+
+    permission[pBank | pInvestor] revokeSignature() | signed {
+        become revoked
+        notify RemoveWhiteListedInvestor(project.contractHash, investor.accountHash);
+    }
+}
+

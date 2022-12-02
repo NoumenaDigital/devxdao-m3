@@ -1,0 +1,66 @@
+package platform.legalContracts
+
+use platform.financialInstruments.ShareClass
+use platform.helper.CHF
+use platform.project.Project
+use platform.financialInstruments.Token
+use platform.notifications.CreateToken
+use platform.trading.SubscriptionOffer
+
+protocol[pBank, pInvestor] SubscriptionAgreement(
+    var originalCommittedNumberOfShares: Number,
+    var project: Project,
+    var originalOffer: SubscriptionOffer
+) {
+    initial state subscribed;
+    final state fullyAllocated;
+    final state partiallyAllocated;
+    final state notAllocated;
+
+    var originalCommittedCHF: CHF = originalOffer.offerSpecifications.initialSharePrice.multiplyBy(originalCommittedNumberOfShares);
+    var originalConfirmedNumberOfShares: Number = 0;
+    var currentlyAvailableNumberOfShares: Number = 0;
+    var tokens: List<Token> = listOf<Token>();
+
+    init {
+        originalOffer.shareClass.addSubscriptionAgreement[pBank](this);
+        originalOffer.addSubscriptionAgreement[pBank](this);
+        };
+
+    permission[pBank] confirmSubscriptionAgreement(numberOfShares: Number) | subscribed {
+        originalConfirmedNumberOfShares = numberOfShares;
+        currentlyAvailableNumberOfShares = numberOfShares;
+        var token: Token = this.createToken[pBank](originalOffer.shareClass);
+
+        tokens = tokens.with(token);
+        info("Subscription agreement for " + pInvestor.toText() + " for " +
+            originalCommittedCHF.toText() + " is confirmed");
+    };
+
+    permission[pBank] becomeFullyAllocated() |subscribed {
+      become fullyAllocated;
+    };
+
+    permission[pBank] becomePartiallyAllocated() |subscribed {
+        become partiallyAllocated;
+    };
+
+    permission[pBank | pInvestor] createToken(shareClass: ShareClass) returns Token { // Unused amount
+        var token: Token = Token[pBank, pInvestor](originalConfirmedNumberOfShares, shareClass, originalOffer.investor);
+
+        info("Creating token for investor: " + this.originalOffer.investor.accountHash);
+
+        notify CreateToken(project.contractHash, this.originalOffer.investor.accountHash, token);
+
+        return token;
+    };
+
+    permission[pBank] rejectSubscription() | subscribed {
+        info("Subscription agreement for " + pInvestor.toText() + " for " +
+            originalCommittedCHF.toText() + " is rejected");
+        become notAllocated;
+    };
+
+
+};
+

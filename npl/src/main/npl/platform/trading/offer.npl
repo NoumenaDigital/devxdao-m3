@@ -1,0 +1,86 @@
+package platform.trading
+
+use platform.financialInstruments.ShareClass
+use platform.helper.ShareOfferSpecifications
+use platform.investors.Investor
+use platform.legalContracts.NDA
+use platform.legalContracts.SubscriptionAgreement
+use platform.project.ProjectDataroomData
+
+protocol[pBank, pPlatform, pInvestor] SubscriptionOffer(
+    var investor: Investor,
+    var expirationDate: DateTime,
+    var offerSpecifications: ShareOfferSpecifications,
+    var shareClass: ShareClass
+) {
+    initial state created;
+    final state expired;
+    final state customerAccepted;
+    final state customerDeclined;
+
+    var subscriptionAgreement = optionalOf<SubscriptionAgreement>();
+    var tradeAgreement = optionalOf<TradeAgreement>();
+
+    init {
+        if (!investor.isNdaPerProjectPresent[pBank](shareClass.project)) {
+            var nda = NDA[pBank, pPlatform, pInvestor](shareClass.project, investor);
+            investor.addNda[pInvestor](nda);
+            shareClass.project.addNda[pBank](nda);
+        };
+    };
+
+    permission[pInvestor] declineOffer() | created {
+        become customerDeclined;
+    };
+
+    obligation[pInvestor] acceptOffer(numberShares: Number) before expirationDate returns SubscriptionAgreement | created {
+        guard(correctShareInvestment(numberShares, offerSpecifications, investor),
+            "Unacceptable invested amount, not within the limit or multiple of share value.");
+        guard(investor.isNdaPerProjectPresent[pBank](shareClass.project)
+            && investor.returnNdaPerProject[pBank](shareClass.project).isSigned[pInvestor](),
+            "Nda needs to be signed before accepting the current offer.");
+        var sa: SubscriptionAgreement = SubscriptionAgreement[pBank, pInvestor](numberShares, shareClass.project, this);
+        this.signShareholderAgreement[pBank, pInvestor]();
+        become customerAccepted;
+        return sa;
+    } otherwise become expired;
+
+    permission[pBank] expire() | created{
+        become expired
+    };
+
+    function correctShareInvestment(numberOfShares: Number, spec: ShareOfferSpecifications, investor: Investor) returns Boolean -> {
+        return ((investor.returnWalletPerProject[pBank](shareClass.project).liquidity.toNumber() >= numberOfShares * spec.initialSharePrice.toNumber()) &&
+            (numberOfShares >= spec.minNumberOfShares) &&
+            (numberOfShares <= spec.maxNumberOfShares)
+        );
+    };
+
+    permission[pBank] addSubscriptionAgreement(sa: SubscriptionAgreement) {
+        subscriptionAgreement = optionalOf<SubscriptionAgreement>(sa);
+    };
+
+    permission[pPlatform] remind(reminder: Text) | created {
+        info(pInvestor.toText() + " received a reminder from " + pPlatform.toText() + ": " + reminder);
+    }
+
+    permission[pInvestor] getBasicProjectData() returns Set<ProjectDataroomData> {
+        guard(investor.isNdaPerProjectPresent[pInvestor](shareClass.project) && investor.returnNdaPerProject[pInvestor](shareClass.project).isSigned[pPlatform](),
+            "Nda needs to be signed before having access to project data.");
+        return shareClass.project.returnProjectDataroom[pPlatform]().returnBasicData[pPlatform]();
+    };
+
+    permission[pBank] setTradeAgreement(ta: TradeAgreement) {
+        tradeAgreement = optionalOf<TradeAgreement>(ta);
+    };
+
+    permission[pBank | pInvestor] returnNda() returns NDA {
+        return investor.returnNdaPerProject[pBank](shareClass.project);
+    };
+
+    permission[pBank & pInvestor] signShareholderAgreement() | created {
+        shareClass.signShareholderAgreement[pBank, pInvestor](investor);
+    };
+
+};
+

@@ -1,0 +1,118 @@
+package platform.financialInstruments
+
+use platform.project.ShareholderAgreementTemplate
+use platform.helper.ShareOfferSpecifications
+use platform.helper.SubscriptionAmount
+use platform.investors.Investor
+use platform.legalContracts.SubscriptionAgreement
+use platform.helper.CHF
+use platform.legalContracts.ShareholderAgreement
+use platform.notifications.AddWhiteListedInvestor
+use platform.project.Project
+use platform.trading.SubscriptionOffer
+
+protocol[pBank] ShareClass(
+    var project: Project,
+    var name: Text,
+    var totalValue: CHF,
+    var initialTotNumberOfShares: Number,
+    var availableSharesForSubscription: Number
+) {
+    guard(initialTotNumberOfShares.isInteger(), "Only an integer number of shares is allowed.");
+    guard(totalValue <= project.availableAmountForSubscriptions, "You can not allocate more value to this share class than the project has available");
+    guard(initialTotNumberOfShares >= availableSharesForSubscription, "You can not offer more shares for subscription, then are available for this share class");
+
+    var initialShareValue = totalValue.divideBy(initialTotNumberOfShares);
+    var satemplate = optionalOf<ShareholderAgreementTemplate>();
+
+    var offers = setOf<SubscriptionOffer>();
+    var tokens = setOf<Token>();
+
+    // Subscription Procedure
+    var committedSubscriptions = listOf<SubscriptionAgreement>();
+    var confirmedSubscriptions = listOf<SubscriptionAgreement>();
+    var rejectedSubscriptions = listOf<SubscriptionAgreement>();
+
+    initial state created;
+    state offersSent;
+    final state subscriptionsCollected;
+
+    init{
+        project.reduceAvailableAmountForSubscription[pBank](totalValue);
+    }
+
+    permission[pBank] sendOriginalOffers(offerDeadline: DateTime, specification: ShareOfferSpecifications) | created {
+        guard(this.checkSharePriceInOffer[pBank](specification), "During fund raising process, the share price needs to be the nominal one.");
+
+    offers = project.selectedInvestors.map(function(i: Investor) returns SubscriptionOffer ->
+        i.makeOffer[pBank](project, offerDeadline, specification, this)).toSet();
+    become offersSent;
+}
+
+    permission[pBank] addToken(token: Token) {
+        tokens = tokens.with(token);
+    };
+
+    permission[pBank] checkSharePriceInOffer(spec: ShareOfferSpecifications) returns Boolean | created {
+            return spec.initialSharePrice == initialShareValue;
+    };
+
+    permission[pBank] setSATemplate(template: ShareholderAgreementTemplate) {
+        satemplate = optionalOf<ShareholderAgreementTemplate>(template);
+    }
+
+    permission[pBank] addSubscriptionAgreement(subscriptionAgreement: SubscriptionAgreement) {
+        committedSubscriptions = committedSubscriptions.with(subscriptionAgreement);
+    };
+
+    permission[pBank] checkIfShareClassOversubscribed() returns SubscriptionAmount {
+        return SubscriptionAmount(
+            committedSubscriptions.map(function (s: SubscriptionAgreement) returns Number -> s.originalCommittedNumberOfShares).sum() > this.availableSharesForSubscription,
+            committedSubscriptions.map(function (s: SubscriptionAgreement) returns CHF -> s.originalCommittedCHF).sum(),
+            committedSubscriptions.map(function (s: SubscriptionAgreement) returns Number -> s.originalCommittedNumberOfShares).sum()
+        );
+    };
+
+    permission[pBank & *pInvestor] signShareholderAgreement(investor: Investor) {
+        guard(satemplate.isPresent(),"If there is no Shareholder Agreement Template present, it can not be signed");
+        ShareholderAgreement[pBank, pInvestor](project, investor, satemplate.getOrFail());
+        project.addWhitelistedInvestor[pBank](investor);
+        notify AddWhiteListedInvestor(project.contractHash, investor.accountHash);
+    };
+
+    permission[pBank] collectSubscriptions() {
+        for (o in offers.filter(function (o: SubscriptionOffer) returns Boolean -> o.currentState == o.states.created)) {
+            o.expire[pBank]();
+        }
+        become subscriptionsCollected
+    };
+
+    permission[pBank] confirmSubscriptions() {
+        // here we assume that bank can either confirm or reject the subscription, not reduce the subscribed amount up
+        // to specifications.minAmount
+        // can be changed in the future
+        guard(offers.noneMatch(function(o: SubscriptionOffer) returns Boolean -> o.currentState == o.states.created), "There are still offers in the state created");
+        for (sa in committedSubscriptions) {
+            if (availableSharesForSubscription > 0) {
+                if (sa.originalCommittedNumberOfShares <= availableSharesForSubscription)
+                {
+                    sa.confirmSubscriptionAgreement[pBank](sa.originalCommittedNumberOfShares);
+                    sa.becomeFullyAllocated[pBank]();
+                    confirmedSubscriptions = confirmedSubscriptions.with(sa);
+                    committedSubscriptions = committedSubscriptions.without(sa);
+                    availableSharesForSubscription = availableSharesForSubscription - sa.originalCommittedNumberOfShares;
+                } else {
+                    sa.confirmSubscriptionAgreement[pBank](availableSharesForSubscription);
+                    sa.becomePartiallyAllocated[pBank]();
+                    confirmedSubscriptions = confirmedSubscriptions.with(sa);
+                    committedSubscriptions = committedSubscriptions.without(sa);
+                    availableSharesForSubscription = 0;
+                };
+            } else {
+                sa.rejectSubscription[pBank]();
+                rejectedSubscriptions = rejectedSubscriptions.with(sa);
+                committedSubscriptions = committedSubscriptions.without(sa);
+            };
+        }
+    };
+};

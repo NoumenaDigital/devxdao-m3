@@ -1,0 +1,36 @@
+package platform.legalContracts
+
+use platform.investors.Investor
+use platform.notifications.RemoveWhiteListedInvestor
+use platform.project.Project
+
+protocol[pBank, pPlatform, pInvestor] NDA(var project: Project, var investor: Investor) {
+    initial state created;
+    state signed;
+    state declined;
+
+    // init statement adding the NDAs where necessary
+    init {
+      project.addNda[pBank](this);
+        investor.addNda[pInvestor](this);
+    };
+
+    permission[pInvestor] signNdaAndLegReq() | created, declined {
+        guard (investor.lexKollerCompliant && investor.lawCompliant, "The client must fullfill the legal requirements of the project to sign the NDA");
+        become signed;
+    };
+
+    permission[pInvestor] declineNdaAndLegReq() | created, signed {
+        project.removeWhitelistedInvestor[pPlatform](investor);
+        notify RemoveWhiteListedInvestor(project.contractHash, investor.accountHash);
+        become declined;
+    };
+
+    permission[pInvestor | pBank | pPlatform] isSigned() returns Boolean {
+        if (currentState == states.signed) {
+            return true;
+        };
+        return false;
+    };
+};
+

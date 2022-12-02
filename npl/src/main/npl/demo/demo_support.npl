@@ -1,0 +1,41 @@
+package demo
+
+use platform.helper.CHF
+use platform.investors.Investor
+use platform.helper.ShareOfferSpecifications
+use platform.project.Project
+use platform.trading.SubscriptionOffer
+
+function setCompliance(i: Investor, party: Party) returns Unit -> {
+    i.setLexKollerCompliant[party](true);
+    i.setLawCompliant[party](true);
+};
+
+function addOfferSpecToProjectAndSendOffers(
+    project: Project,
+    offerSpec: ShareOfferSpecifications,
+    offerDeadline: DateTime,
+    party: Party
+) returns Unit -> {
+    project.sendOriginalOffers[party]("A", now().plus(years(1)), offerSpec);
+};
+
+function setupOfferAndSignNda(shareClassName: Text, investor: Investor, project: Project, pInvestor: Party, pBank: Party) returns SubscriptionOffer -> {
+    var offer = selectOfferForInvestor(shareClassName, project, investor, pInvestor, pBank).getOrFail();
+    var nda = offer.returnNda[pInvestor]();
+    nda.signNdaAndLegReq[pInvestor]();
+
+    return offer;
+};
+
+function shareOfferSpecification() returns ShareOfferSpecifications -> {
+    return ShareOfferSpecifications(
+        minNumberOfShares = 1,
+        maxNumberOfShares = 20,
+        initialSharePrice = CHF(80)
+    );
+};
+
+function selectOfferForInvestor(shareClassName: Text, project: Project, investor: Investor, pInvestor: Party, pBank: Party) returns Optional<SubscriptionOffer> -> {
+    return project.returnShareClass[pBank](shareClassName).offers.toList().findFirstOrNone(function(o: SubscriptionOffer) returns Boolean -> o.investor == investor);
+};

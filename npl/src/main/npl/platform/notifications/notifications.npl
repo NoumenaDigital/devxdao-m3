@@ -1,0 +1,30 @@
+package platform.notifications
+
+use platform.project.Project
+use platform.financialInstruments.Token
+
+notification CreateProject(
+    project: Project
+) returns Unit;
+
+notification CreateToken(
+    contractHash: Text,
+    accountHash: Text,
+    token: Token
+) returns Unit;
+
+notification TransferToken(
+    sourceAccountHash: Text,
+    targetAccountHash: Text,
+    bcId: Text
+) returns Unit;
+
+notification AddWhiteListedInvestor(
+    contractHash: Text,
+    accountHash: Text
+) returns Unit;
+
+notification RemoveWhiteListedInvestor(
+    contractHash: Text,
+    accountHash: Text
+) returns Unit;

@@ -1,0 +1,187 @@
+package platform.helper;
+
+use demo.selectOfferForInvestor
+use platform.investors.Investor
+use platform.legalContracts.SubscriptionAgreement
+use platform.project.DueDiligencePackage
+use platform.project.Project
+use platform.project.ProjectData
+use platform.project.ProjectDataroomData
+use platform.project.ProjectDeveloperData
+use platform.project.ShareholderAgreementTemplate
+
+const pBank: Party = 'Bank';
+const pInvestor0: Party = 'Investor 0';
+const pInvestor1: Party = 'Investor 1';
+const pInvestor2: Party = 'Investor 2';
+const pInvestor3: Party = 'Investor 3';
+const pInvestor4: Party = 'Investor 4';
+const pInvestor5: Party = 'Investor 5';
+const pInvestor6: Party = 'Investor 6';
+const pInvestor7: Party = 'Investor 7';
+const pInvestor8: Party = 'Investor 8';
+const pInvestor9: Party = 'Investor 9';
+const pPlatform: Party = 'Real Estate Platform';
+const pBuyer: Party = 'buyer';
+
+function initialProjectSetUp() returns Project -> {
+    // A Real Estate project is created between the platform, a bank and the project developer
+    // The Real Estate Project is looking for 20m CHF in external debt
+    var project = Project[pPlatform, pBank]("PP Project 1", CHF(50000000));
+    project.setContractHash[pPlatform]("contractHash"); // Does this have to be set now already?
+
+    // Project Developer adds Project Developer Data and Project Data
+    project.returnProjectDataroom[pBank]().addData[pBank](ProjectDeveloperData[pPlatform, pBank]());
+    project.returnProjectDataroom[pBank]().addData[pBank](ProjectData[pPlatform, pBank]());
+
+    // The Bank adds the Due Diligence information to the platform
+    project.returnProjectDataroom[pBank]().addData[pBank](DueDiligencePackage[pPlatform, pBank]());
+
+    project.createShareClass[pBank]("A", project.projectValue, 100000, 50000);
+
+    // Add the Shareholder Agreement Template to the project
+    project.returnProjectDataroom[pBank]().addData[pBank](
+        ShareholderAgreementTemplate[pPlatform, pBank](project.returnShareClass[pBank]("A"))
+    );
+    project.returnProjectDataroom[pBank]().data.map(function(d: ProjectDataroomData) returns Optional<ShareholderAgreementTemplate> ->
+        match(d) {
+            is ShareholderAgreementTemplate -> (optionalOf<ShareholderAgreementTemplate>(d))
+            else -> (optionalOf<ShareholderAgreementTemplate>())
+        }).filter(function(i: Optional<ShareholderAgreementTemplate>) returns Boolean -> i.isPresent())
+        .firstOrNone().getOrFail().getOrFail().addISIN[pPlatform]("123456789012");
+
+    return project;
+};
+
+function initialInvestorSetup() returns Map<Text,Investor> -> {
+    // create list of 8 investors for the fund raising process and run the due diligence
+    var investor0: Investor = Investor[pBank, pPlatform, pInvestor0]("Investor0", "", "investor8@mail.com", "accountHash8");
+    var investor1: Investor = Investor[pBank, pPlatform, pInvestor1]("Investor1", "", "investor1@mail.com", "accountHash1");
+    var investor2: Investor = Investor[pBank, pPlatform, pInvestor2]("Investor2", "", "investor2@mail.com", "accountHash2");
+    var investor3: Investor = Investor[pBank, pPlatform, pInvestor3]("Investor3", "", "investor3@mail.com", "accountHash3");
+    var investor4: Investor = Investor[pBank, pPlatform, pInvestor4]("Investor4", "", "investor4@mail.com", "accountHash4");
+    var investor5: Investor = Investor[pBank, pPlatform, pInvestor5]("Investor5", "", "investor5@mail.com", "accountHash5");
+    var investor6: Investor = Investor[pBank, pPlatform, pInvestor6]("Investor6", "", "investor6@mail.com", "accountHash6");
+    var investor7: Investor = Investor[pBank, pPlatform, pInvestor7]("Investor7", "", "investor7@mail.com", "accountHash7");
+    var investor8: Investor = Investor[pBank, pPlatform, pInvestor8]("Investor8", "", "investor8@mail.com", "accountHash8");
+    var investor9: Investor = Investor[pBank, pPlatform, pInvestor9]("Investor9", "", "investor8@mail.com", "accountHash8");
+
+    var investors: Map<Text, Investor> = mapOf<Text,Investor>(
+        Pair(investor0.firstName, investor0),
+        Pair(investor1.firstName, investor1),
+        Pair(investor2.firstName, investor2),
+        Pair(investor3.firstName, investor3),
+        Pair(investor4.firstName, investor4),
+        Pair(investor5.firstName, investor5),
+        Pair(investor6.firstName, investor6),
+        Pair(investor7.firstName, investor7),
+        Pair(investor8.firstName, investor8),
+        Pair(investor9.firstName, investor9)
+    );
+    return investors;
+};
+
+
+function initialSetUp() returns initialSetUpReturn -> {
+
+    var project: Project = initialProjectSetUp();
+    var investors: Map<Text, Investor> = initialInvestorSetup();
+
+    // add an investor in the black list
+    project.addBlackListedInvestor[pBank](investors.get("Investor8").getOrFail());
+
+    // make investors compliant
+    for (i in investors.values()) {
+        i.setCompliant[pBank](true);
+    };
+
+    // start fundraising process with a list of investors (investor 8 is not in the list of potential investors since it is in the black list)
+    project.selectInvestors[pBank](
+        investors.values().toSet()
+    );
+
+    // fund investors
+    for (i in project.selectedInvestors) {
+        i.returnWalletPerProject[pBank](project).setLiquidity[pBank](CHF(20000000));
+    };
+
+    return initialSetUpReturn(
+        project = project,
+        investors = investors
+    );
+
+};
+
+function offerProcess(project: Project, investors: Map<Text, Investor> ) returns  initialSetUpReturn -> {
+    // create the specifications for the offer that will be sent to each potential investor
+    var shareOfferSpecification = ShareOfferSpecifications(
+        minNumberOfShares = 1000,
+        maxNumberOfShares = 40000,
+        // The share prices is initially defined by the project value divided by the number of shares
+        initialSharePrice = project.projectValue / project.returnShareClass[pBank]("A").initialTotNumberOfShares
+    );
+
+    // send offer to potential investors. Investors from 1 to 7 receive the offer (8 is in the black list)
+    // the NDA is created as well
+    project.sendOriginalOffers[pBank]("A", 2023-07-01T12:00Z, shareOfferSpecification);
+
+    // INVESTOR 1
+    // investor 1 signs the NDA and gets access to "all project data"
+    var offerForInvestor1 = selectOfferForInvestor("A", project, investors.get("Investor1").getOrFail(), pInvestor1, pBank).getOrFail();
+    offerForInvestor1.returnNda[pInvestor1]().signNdaAndLegReq[pInvestor1]();
+    var projectDataObtainedByInvestor1 = offerForInvestor1.getBasicProjectData[pInvestor1]();
+    // investor 1 subscribes to the offer
+    var subscriptionAgreementForInvestor1: SubscriptionAgreement = offerForInvestor1.acceptOffer[pInvestor1](20000);
+
+    // investors who has not accepted the offer yet receive a reminder
+    project.sendReminders[pPlatform]("A", "Please mind the subscription deadline!");
+
+    // INVESTOR 2
+    // investor 2 signs the NDA and gets access to "all project data"
+    var offerForInvestor2 = selectOfferForInvestor("A", project, investors.get("Investor2").getOrFail(), pInvestor2, pBank).getOrFail();
+    offerForInvestor2.returnNda[pInvestor2]().signNdaAndLegReq[pInvestor2]();
+    // investor 2 declines to the offer
+    offerForInvestor2.declineOffer[pInvestor2]();
+
+    // INVESTOR 3
+    // investor 3 does not react to the offer before the expiration date
+
+    // INVESTOR 4 - 7
+    // investors 4 to 7 accept the offer
+    var offerForInvestor4 = selectOfferForInvestor("A", project, investors.get("Investor4").getOrFail(), pInvestor4, pBank).getOrFail();
+    offerForInvestor4.returnNda[pInvestor4]().signNdaAndLegReq[pInvestor4]();
+    var subscriptionAgreementForInvestor4: SubscriptionAgreement = offerForInvestor4.acceptOffer[pInvestor4](10000);
+
+    var offerForInvestor5 = selectOfferForInvestor("A", project, investors.get("Investor5").getOrFail(), pInvestor5, pBank).getOrFail();
+    offerForInvestor5.returnNda[pInvestor5]().signNdaAndLegReq[pInvestor5]();
+    var subscriptionAgreementForInvestor5: SubscriptionAgreement = offerForInvestor5.acceptOffer[pInvestor5](10000);
+
+    var offerForInvestor6 = selectOfferForInvestor("A", project, investors.get("Investor6").getOrFail(), pInvestor6, pBank).getOrFail();
+    offerForInvestor6.returnNda[pInvestor6]().signNdaAndLegReq[pInvestor6]();
+    var subscriptionAgreementForInvestor6: SubscriptionAgreement = offerForInvestor6.acceptOffer[pInvestor6](20000);
+
+    var offerForInvestor7 = selectOfferForInvestor("A", project, investors.get("Investor7").getOrFail(), pInvestor7, pBank).getOrFail();
+    offerForInvestor7.returnNda[pInvestor7]().signNdaAndLegReq[pInvestor7]();
+    var subscriptionAgreementForInvestor7: SubscriptionAgreement = offerForInvestor7.acceptOffer[pInvestor7](10000);
+
+    return initialSetUpReturn(
+        project = project,
+        investors = investors
+    );
+};
+
+function initialSubscriptionProcess(project: Project, investors: Map<Text, Investor>) returns initialSetUpReturn -> {
+    // time shifted to after the offer deadline
+    project.collectSubscriptions[pBank](); // executed by changing time in the original (demo_test)
+    project.confirmSubscriptionAgreements[pBank]("A");
+
+    return initialSetUpReturn(
+        project = project,
+        investors = investors
+    );
+};
+
+struct initialSetUpReturn{
+  project: Project,
+    investors: Map<Text,Investor>
+};

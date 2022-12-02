@@ -1,0 +1,66 @@
+package platform.financialInstruments
+
+use platform.investors.Investor
+use platform.notifications.TransferToken
+use platform.trading.OnChainTradeAgreement
+use platform.trading.TradeAgreement
+
+protocol[pBank, pOwner] Token(var numberOfShares: Number, var shareClass: ShareClass, var owner: Investor) {
+    initial state minted;
+    final state traded;
+
+    var bcId: Text= "n/a";
+    var tradeAgreements: List<TradeAgreement> = listOf<TradeAgreement>();
+
+    init{
+        owner.returnWalletPerProject[pBank](shareClass.project).addToken[pOwner](this);
+        shareClass.addToken[pBank](this);
+    };
+
+    permission[pOwner] isMyToken() returns Boolean {
+        return true;
+    };
+
+    @api
+    permission[pBank] setBcId(id: Text) | minted {
+        info("Setting bdId: " + id);
+        bcId = id;
+    };
+
+    permission[pOwner] addTradeAgreement(ta: TradeAgreement) {
+        tradeAgreements = tradeAgreements.with(ta);
+    };
+
+    // On-Chain Transfer is triggered by the chain
+    @api
+    permission[pOwner & *pNewInvestorParty] onChainTransfer(receiverAccountHash: Text) | minted, traded {
+        // There is no guard here, since if a transaction has been executed on the chain, it must also succeed on the platform
+
+        var newInvestor = shareClass.project.whiteListedInvestors.filter(function(i: Investor) returns Boolean -> i.accountHash == receiverAccountHash).toList().firstOrNone().getOrFail();
+        OnChainTradeAgreement[pBank, pOwner, pNewInvestorParty](newInvestor, this);
+        this.transferOwnership[pOwner, pNewInvestorParty](newInvestor);
+    };
+
+    // Off Chain Transfer is invoked by the Trade Agreement
+    permission[pOwner & *newInvestorParty] offChainTransfer(newInvestor: Investor) | minted, traded {
+        guard(shareClass.project.whiteListedInvestors.contains(newInvestor), "The new investor is not whitelisted");
+
+        var oldInvestorAccountHash = this.owner.accountHash;
+        info("Transfering token, source: " + oldInvestorAccountHash + ", destination: " + newInvestor.accountHash + ", bdId: " + bcId);
+
+        this.transferOwnership[pOwner, newInvestorParty](newInvestor);
+        notify TransferToken(oldInvestorAccountHash, newInvestor.accountHash, bcId);
+
+    };
+
+    permission[pOwner & *newOwner] transferOwnership(newInvestor: Investor) | minted, traded {
+        var wallet = owner.returnWalletPerProject[pBank](shareClass.project);
+        wallet.removeToken[pBank](this);
+        this.pOwner = newOwner;
+        owner = newInvestor;
+        wallet = owner.returnWalletPerProject[pBank](shareClass.project);
+        wallet.addToken[pBank](this);
+        become traded
+    };
+
+};

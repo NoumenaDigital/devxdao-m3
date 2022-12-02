@@ -1,0 +1,175 @@
+package platform.financialInstruments;
+
+use demo.selectOfferForInvestor
+use platform.helper.CHF
+use platform.helper.ShareOfferSpecifications
+use platform.helper.initialProjectSetUp
+use platform.helper.initialSetUpReturn
+use platform.helper.pBank
+use platform.helper.pInvestor1
+use platform.helper.pInvestor2
+use platform.helper.pInvestor3
+use platform.helper.pInvestor4
+use platform.helper.pPlatform
+use platform.investors.Investor
+use platform.legalContracts.SubscriptionAgreement
+use platform.trading.OffChainTradeAgreement
+
+@test
+function createToken(test: Test) returns initialSetUpReturn -> {
+    var project = initialProjectSetUp();
+
+    var investor1: Investor = Investor[pBank, pPlatform, pInvestor1]("Investor1", "", "investor1@mail.com", "accountHash1");
+    investor1.setCompliant[pBank](true);
+    var investor2: Investor = Investor[pBank, pPlatform, pInvestor2]("Investor2", "", "investor2@mail.com", "accountHash2");
+    investor2.setCompliant[pBank](true);
+    var investor3: Investor = Investor[pBank, pPlatform, pInvestor3]("Investor3", "", "investor3@mail.com", "accountHash3");
+    investor3.setCompliant[pBank](true);
+    var investor4: Investor = Investor[pBank, pPlatform, pInvestor4]("Investor4", "", "investor4@mail.com", "accountHash4");
+    investor4.setCompliant[pBank](true);
+
+    project.selectInvestors[pBank](setOf<Investor>(investor1, investor2, investor3, investor4));
+
+    test.assertTrue(project.selectedInvestors.size() == 4, "All 4 investors have been selected for the offering process");
+
+
+    var shareOfferSpecification = ShareOfferSpecifications(
+        minNumberOfShares = 10000,
+        maxNumberOfShares = 40000,
+        // The share prices is initially defined by the project value divided by the number of shares
+        initialSharePrice = project.projectValue / project.returnShareClass[pBank]("A").initialTotNumberOfShares
+    );
+
+    project.sendOriginalOffers[pBank]("A", now().plus(days(1)), shareOfferSpecification);
+
+    // Testing creation of the Offers
+    test.assertTrue(project.returnShareClass[pBank]("A").offers.size() == 4, "4 offers were created for the project");
+    for (i in project.selectedInvestors) {
+      test.assertTrue(project.returnShareClass[pBank]("A").offers.contains(i.offers.toList().firstOrNone().getOrFail()),
+          i.firstName.toText()+" has recieved an offer from the project");
+    };
+
+    // Testing creation of the NDAs
+    test.assertTrue(project.returnShareClass[pBank]("A").offers.size() == 4, "4 NDAs were created for the project");
+    for (i in project.selectedInvestors) {
+        test.assertTrue(project.ndaPerInvestor.contains(i.ndaPerProject.toList().firstOrNone().getOrFail()),
+            i.firstName.toText()+" has recieved an NDA from the project");
+    };
+
+    for (i in project.selectedInvestors) {
+        i.returnWalletPerProject[pBank](project).setLiquidity[pBank](CHF(20000000));
+    };
+
+    // Investor 1 accepts the offer and should get a token over 40000 shares
+    var offerForInvestor1 = selectOfferForInvestor("A", project, investor1, pInvestor1, pBank).getOrFail();
+    offerForInvestor1.returnNda[pInvestor1]().signNdaAndLegReq[pInvestor1]();
+
+    test.assertTrue(investor1.ndaPerProject.toList().firstOrNone().getOrFail().currentState ==
+        investor1.ndaPerProject.toList().firstOrNone().getOrFail().states.signed, "The NDA has been signed");
+
+    var subscriptionAgreementForInvestor1: SubscriptionAgreement = offerForInvestor1.acceptOffer[pInvestor1](40000);
+
+    test.assertTrue(project.whiteListedInvestors.contains(investor1),"Investor 1 has been whitelisted");
+
+    test.assertTrue(investor1.offers.toList().firstOrNone().getOrFail().currentState ==
+        investor1.offers.toList().firstOrNone().getOrFail().states.customerAccepted, "The offer has been signed");
+
+    test.assertTrue(
+        investor1.shareholderAgreementPerShareClass.size() == 1, "Their is a shareholder agreement present on the investor"
+    );
+    test.assertTrue(
+        investor1.shareholderAgreementPerShareClass.toList().firstOrNone().getOrFail().currentState ==
+        investor1.shareholderAgreementPerShareClass.toList().firstOrNone().getOrFail().states.signed,
+        "There is a shareholder agreement present on the investor"
+    );
+    test.assertTrue(
+      investor1.shareholderAgreementPerShareClass.toList().firstOrNone().getOrFail() ==
+        project.shareholderAgreementsPerInvestor.toList().firstOrNone().getOrFail(),
+        "The shareholder agreement is listed on both the project and the investor"
+    );
+
+    // Investor 2 declines the offer and should not get a token
+    var offerForInvestor2 = selectOfferForInvestor("A", project, investor2, pInvestor2, pBank).getOrFail();
+    offerForInvestor2.declineOffer[pInvestor2]();
+
+    test.assertTrue(investor2.offers.toList().firstOrNone().getOrFail().currentState ==
+        investor2.offers.toList().firstOrNone().getOrFail().states.customerDeclined, "The offer has been declined");
+
+    // Investor 3 does nto react
+    var offerForInvestor3 = selectOfferForInvestor("A", project, investor3, pInvestor3, pBank).getOrFail();
+
+    // Investor 4 accepts the offer for 20000 shares, but only 10000 are available. The token should thus only cover 10000 shares
+    var offerForInvestor4 = selectOfferForInvestor("A", project, investor4, pInvestor4, pBank).getOrFail();
+    offerForInvestor4.returnNda[pInvestor4]().signNdaAndLegReq[pInvestor4]();
+    var subscriptionAgreementForInvestor4: SubscriptionAgreement = offerForInvestor4.acceptOffer[pInvestor4](20000);
+
+    test.assertTrue(project.whiteListedInvestors.contains(investor4) && project.whiteListedInvestors.size() == 2,"Investor 4 has been whitelisted and there are two investors who are whitelisted");
+
+    test.setTime(2023-07-02T12:00Z);
+
+    test.assertTrue(investor3.offers.toList().firstOrNone().getOrFail().currentState ==
+        investor3.offers.toList().firstOrNone().getOrFail().states.expired, "The NDA has been signed");
+
+    project.confirmSubscriptionAgreements[pBank]("A");
+
+    test.assertTrue(project.returnShareClass[pBank]("A").tokens.size() == 2
+        && project.returnShareClass[pBank]("A").tokens.map(function (t: Token) returns Number -> t.numberOfShares).sum() == 50000
+        && project.returnShareClass[pBank]("A").tokens.allMatch(function (t: Token) returns Boolean -> t.currentState.toText() == "minted"),
+        "The sum of the shares which were tokenized is 50000, amounting to the total amount of shares available.");
+
+    test.assertTrue(investor1.returnWalletPerProject[pBank](project).tokens.size() == 1
+        && investor1.returnWalletPerProject[pBank](project).tokens.toList().firstOrNone().getOrFail().numberOfShares == 40000
+        && investor1.returnWalletPerProject[pBank](project).tokens.toList().firstOrNone().getOrFail().shareClass == project.returnShareClass[pBank]("A")
+        && investor1.returnWalletPerProject[pBank](project).tokens.toList().firstOrNone().getOrFail().owner == investor1
+        ,"");
+
+    for (t in project.whiteListedInvestors.map(function(i: Investor) returns Token ->
+        i.returnWalletPerProject[pBank](project).tokens.toList().firstOrNone().getOrFail())) {
+        test.assertTrue(project.returnShareClass[pBank]("A").tokens.contains(t), "The tokens assigned to the investor are listed on the share class");
+    };
+
+    var allinvestors = mapOf<Text,Investor>(
+            Pair(investor1.firstName,investor1),
+            Pair(investor2.firstName,investor2),
+            Pair(investor3.firstName,investor3),
+            Pair(investor4.firstName,investor4));
+
+    test.assertTrue(true, "Test completed");
+
+    return initialSetUpReturn(
+        project = project,
+        investors = allinvestors
+    );
+};
+
+// write test on token transfer
+
+
+@test
+function transferToken(test: Test) -> {
+    var input = createToken(test);
+    var project = input.project;
+    var investor1 = input.investors.get("Investor1").getOrFail();
+    var investor2 = input.investors.get("Investor2").getOrFail();
+
+    test.assertTrue(investor2.returnWalletPerProject[pInvestor2](project).tokens.size() == 0, "Investor 2 does not yet own a token");
+
+    project.returnShareClass[pPlatform]("A").signShareholderAgreement[pBank, pInvestor2](investor2);
+
+    test.assertTrue(project.whiteListedInvestors.contains(investor2),"Investor 2 is whitelisted");
+
+    var tradedToken = investor1.returnWalletPerProject[pInvestor1](project).tokens.toList().firstOrNone().getOrFail();
+    var tradeAgreement = OffChainTradeAgreement[pBank, pInvestor1, pInvestor2](
+        investor2,
+        now().plus(days(2)),
+        tradedToken);
+    tradeAgreement.buyerAgree[pInvestor2]();
+    tradeAgreement.sellerAgree[pInvestor1]();
+
+    test.assertTrue((investor2.returnWalletPerProject[pInvestor2](project).tokens.size() == 1
+    && investor2.returnWalletPerProject[pInvestor2](project).tokens.toList().firstOrNone().getOrFail() == tradedToken), "Investor 2 now owns the token of Investor 1");
+
+
+    test.assertTrue(true, "Test completed");
+
+};

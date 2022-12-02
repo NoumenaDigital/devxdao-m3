@@ -1,0 +1,97 @@
+version: "2.4"
+
+volumes:
+  keycloak-provisioning: { }
+  keycloak-db: { }
+
+services:
+
+  api:
+    image: ghcr.io/noumenadigital/replatform/api:latest
+    platform: linux/amd64
+    build:
+      context: api
+    ports:
+      - "9000:9000"
+      - "8888:8888"
+    environment:
+      KEYCLOAK_URL: http://keycloak:11000
+      ENGINE_URL: http://engine:12000
+      JAVA_TOOL_OPTIONS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8888
+    depends_on:
+      - keycloak-provisioning
+      - engine
+
+  engine:
+    image: ghcr.io/noumenadigital/replatform/engine:latest
+    build:
+      context: npl
+    ports:
+      - "12000:12000"
+    environment:
+      ENGINE_DB_URL: "jdbc:postgresql://engine-db:5432/engine"
+      ENGINE_DB_USER: devxdao
+      ENGINE_DB_PASSWORD: secret
+      ENGINE_AUTH_SERVER_BASE_URL: http://keycloak:11000
+      POSTGRAPHILE_DB_USER: postgraphile
+      POSTGRAPHILE_DB_PASSWORD: postgraphile
+      ENGINE_ROOT_LOG_LEVEL: INFO
+    depends_on:
+      - engine-db
+      - keycloak
+
+  engine-db:
+    image: postgres:11.6-alpine
+    mem_limit: 256m
+    environment:
+      POSTGRES_DB: engine
+      POSTGRES_USER: devxdao
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+
+  keycloak-provisioning:
+    image: ghcr.io/noumenadigital/replatform/keycloak-provisioning:latest
+    platform: linux/amd64
+    build:
+      context: keycloak-provisioning
+    volumes:
+      - keycloak-provisioning:/state
+    command: /terraform/local.sh
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:19.0.0
+    command: start --auto-build --hostname-strict=false --hostname-strict-https=false --health-enabled=true --http-enabled=true --metrics-enabled=true --db=postgres
+    environment:
+      KC_DB_URL: jdbc:postgresql://keycloak-db/postgres
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: testing
+      KC_HTTP_PORT: 11000
+      KC_FRONTEND_URL: ${KEYCLOAK_URL}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "11000:11000"
+    healthcheck:
+      test: curl -s -f ${KEYCLOAK_URL}/health || exit 1
+      interval: 1s
+      retries: 120
+    depends_on:
+      keycloak-db:
+        condition: service_started
+
+  keycloak-db:
+    mem_limit: 256m
+    image: postgres:11.5-alpine
+    ports:
+      - "11040:5432"
+    volumes:
+      - keycloak-db:/var/lib/postgresql/data
+    environment:
+      SERVICE_5432_NAME: keycloak-db
+      SERVICE_5432_CHECK_TCP: "true"
+      SERVICE_5432_CHECK_INTERVAL: 10s
+

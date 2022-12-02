@@ -1,0 +1,91 @@
+package platform.project;
+
+use demo.selectOfferForInvestor
+use platform.helper.ShareOfferSpecifications
+use platform.helper.initialInvestorSetup
+use platform.helper.initialSetUp
+use platform.helper.initialProjectSetUp
+use platform.helper.initialSubscriptionProcess
+use platform.helper.offerProcess
+use platform.helper.pBank
+use platform.helper.pInvestor1
+use platform.helper.pPlatform
+use platform.investors.Investor
+
+@test
+function testGetAllTokenOwners(test: Test) returns Unit -> {
+    var setup = initialSetUp();
+    setup = offerProcess(setup.project, setup.investors);
+    setup = initialSubscriptionProcess(setup.project, setup.investors);
+    var testAccountHash = setup.project.getAllTokenOwners[pPlatform]();
+    var assertAccountHash = listOf<Text>("accountHash1", "accountHash4", "accountHash5", "accountHash6");
+
+    test.assertEquals(assertAccountHash, testAccountHash, "The correct Token owners were returned");
+};
+
+
+@test
+function testProjectDataRoomAccess(test: Test) returns Unit -> {
+    var project = initialProjectSetUp();
+    var investors = initialInvestorSetup();
+
+    var testInvestor = investors.get("Investor1").getOrFail();
+
+    testInvestor.setCompliant[pBank](true);
+
+
+    project.selectInvestors[pBank](setOf<Investor>(testInvestor));
+
+    var shareOfferSpecification = ShareOfferSpecifications(
+        minNumberOfShares = 1000,
+        maxNumberOfShares = 40000,
+        // The share prices is initially defined by the project value divided by the number of shares
+        initialSharePrice = project.projectValue / project.returnShareClass[pBank]("A").initialTotNumberOfShares
+    );
+
+    project.sendOriginalOffers[pBank]("A", now().plus(days(1)), shareOfferSpecification);
+    var offerForInvestor1 = selectOfferForInvestor("A", project, testInvestor, pInvestor1, pBank).getOrFail();
+    test.assertFails(function() returns Set<ProjectDataroomData> -> offerForInvestor1.getBasicProjectData[pInvestor1](),"pInvestor1 has not signed an NDA yet");
+
+    offerForInvestor1.returnNda[pInvestor1]().signNdaAndLegReq[pInvestor1]();
+    test.assertEquals(project.returnProjectDataroom[pPlatform]().returnBasicData[pPlatform](),offerForInvestor1.getBasicProjectData[pInvestor1](),"pInvestor1 has signed an NDA adn can retrieve the data");
+};
+
+@test
+function addSelectedandBlockedInvestors(test: Test) returns Unit -> {
+    var project = initialProjectSetUp();
+    var investors = initialInvestorSetup();
+
+    var investor0 = investors.get("Investor0").getOrFail();  // not compliant, not blacklisted
+    var investor1 = investors.get("Investor1").getOrFail();  // compliant, not blacklisted
+    var investor2 = investors.get("Investor2").getOrFail();  // not compliant, blacklisted
+    var investor3 = investors.get("Investor3").getOrFail();  // compliant, not blacklisted
+
+
+    investor1.setCompliant[pBank](true);
+    investor3.setCompliant[pBank](true);
+
+    test.assertFalse(investor0.lexKollerCompliant && investor0.lawCompliant, "Investor0 is not compliant");
+    test.assertTrue(investor1.lexKollerCompliant && investor1.lawCompliant, "Investor1 is compliant");
+    test.assertFalse(investor2.lexKollerCompliant && investor2.lawCompliant, "Investor2 is not compliant");
+    test.assertTrue(investor3.lexKollerCompliant && investor3.lawCompliant, "Investor3 is compliant");
+
+    project.addBlackListedInvestor[pBank](investor1);
+    project.addBlackListedInvestor[pBank](investor2);
+
+    test.assertFalse(project.blackListedInvestors.contains(investor0), "Investor 0 is not blacklisted");
+    test.assertTrue(project.blackListedInvestors.contains(investor1), "Investor 1 is blacklisted");
+    test.assertTrue(project.blackListedInvestors.contains(investor2), "Investor 2 is blacklisted");
+    test.assertFalse(project.blackListedInvestors.contains(investor3), "Investor 3 is not blacklisted");
+
+    project.selectInvestors[pBank](setOf<Investor>(investor0,investor1,investor2,investor3));
+
+    test.assertFalse(project.selectedInvestors.contains(investor0), "Investor 0 is selected");
+    test.assertFalse(project.selectedInvestors.contains(investor1), "Investor 1 is selected");
+    test.assertFalse(project.selectedInvestors.contains(investor2), "Investor 2 is selected");
+    test.assertTrue(project.selectedInvestors.contains(investor3), "Investor 3 is selected");
+
+    // Adding investor 1 as a whitelisted investor is prohibited, since a shareholder agreement is not present
+    test.assertFailsWith(function () -> project.addWhitelistedInvestor[pBank](investor3),14,"Couldn't add the investor, since he does not have a shareholder Agreement yet");
+
+};

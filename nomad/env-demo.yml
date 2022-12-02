@@ -1,0 +1,36 @@
+# Application
+datacenter: devxdao-dev
+domain: devxdao-dev.noumenadigital.com
+app_type: dev
+app_name: devxdao-dev
+entrypoint: external
+environment: "DEMO"
+LOG_LEVEL: info
+
+## ENGINE
+ENGINE_URL: "http://engine.service.consul:12000"
+ENGINE_DB_URL: "jdbc:postgresql://postgresql.service.consul/platform"
+ENGINE_PERSISTENT_KERNEL: "true"
+ENGINE_PERSISTENT_KERNEL_CACHE: "true"
+JAVA_TOOL_OPTIONS: -Dsun.management.jmxremote.level=FINEST -Dsun.management.jmxremote.handlers=java.util.logging.ConsoleHandler -Djava.util.logging.ConsoleHandler.level=FINEST -Djava.rmi.server.hostname=${DOCKER_HOST_ADDR:-host.docker.internal} -Dcom.sun.management.jmxremote=true -Dcom.sun.management.jmxremote.port=5557 -Dcom.sun.management.jmxremote.rmi.port=5557 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false
+JVM_MAX_RAM_PERCENTAGE: "75"
+ENGINE_ROOT_LOG_LEVEL: INFO
+SERVICE_TAGS: "direct|prometheus=/actuator/prometheusmetrics"
+SERVICE_CHECK_HTTP: /actuator/health
+SERVICE_CHECK_INTERVAL: 10s
+SERVICE_12000_NAME: engine
+SERVICE_5557_IGNORE: "true"
+SERVICE_5557_NAME: engineJmx
+FLUX_CONNECTION_TIMEOUT: "20000 millis"
+
+## VAULT
+VAULT_ENDPOINT: "http://vault.service.consul:8200"
+
+## KEYCLOAK
+KEYCLOAK_URL: "http://keycloak.service.consul:11000"
+KC_HTTP_PORT: 11000
+KEYCLOAK_ADMIN: admin
+KEYCLOAK_ADMIN_PASSWORD: DevX123!
+
+## CASPER
+CHAIN_NAME: "integration-test"

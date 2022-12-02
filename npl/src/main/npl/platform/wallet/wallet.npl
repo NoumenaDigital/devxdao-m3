@@ -1,0 +1,46 @@
+package platform.wallet
+
+use platform.helper.CHF
+use platform.investors.Investor
+use platform.project.Project
+use platform.financialInstruments.Token
+
+protocol[pBank, pInvestor] Wallet(var investor: Investor, var project: Project) {
+
+    var tokens = setOf<Token>(); // Currently set to set, since aim is to change to just one wallet per investor, not per project
+    var liquidity = CHF(0);
+
+    permission[pInvestor] isMyWallet() returns Boolean {
+        return true;
+    };
+
+    permission[pInvestor | pBank] setLiquidity(l: CHF) {
+        liquidity = l;
+    };
+
+    permission[pInvestor | pBank] addToken(token: Token) {
+        tokens = tokens.with(token);
+    };
+
+    permission[pBank] removeToken(token: Token) {
+        tokens = tokens.without(token);
+    }
+
+    permission[pInvestor | pBank] pay(amount: CHF) {
+        liquidity = liquidity - amount;
+    };
+
+    permission[pBank] cash(amount: CHF) {
+        liquidity = liquidity + amount;
+    };
+
+    permission[pInvestor | pBank] returnTokenPerProject(project: Project) returns Token {
+        guard (isTokenPerProjectPresent(project), "Token for the specified project is not present.");
+        return tokens.filter(function(t: Token) -> t.shareClass.project == project).toList().firstOrNone().getOrFail();
+    };
+
+    function isTokenPerProjectPresent(project: Project) returns Boolean -> {
+        return tokens.filter(function(t: Token) -> t.shareClass.project == project).toList().firstOrNone().isPresent();
+    };
+
+};

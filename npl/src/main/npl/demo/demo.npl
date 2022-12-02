@@ -1,0 +1,147 @@
+package demo
+
+use platform.investors.Investor
+use platform.legalContracts.SubscriptionAgreement
+use platform.project.DueDiligencePackage
+use platform.helper.CHF
+use platform.helper.ShareOfferSpecifications
+use platform.project.Project
+use platform.project.ProjectData
+use platform.project.ProjectDataroomData
+use platform.project.ProjectDeveloperData
+use platform.project.ShareholderAgreementTemplate
+use platform.trading.OffChainTradeAgreement
+
+@api
+protocol[pPlatform, pBank, pInvestor1, pInvestor2, pInvestor3, pInvestor4] Demo() {
+
+    var projectPP: Optional<Project> = optionalOf<Project>();
+    var investor1Accepts20000: Optional<Investor> = optionalOf<Investor>();
+    var investor2Declines: Optional<Investor> = optionalOf<Investor>();
+    var investor3Accepts10000: Optional<Investor> = optionalOf<Investor>();
+    var investor4Buyer: Optional<Investor> = optionalOf<Investor>();
+
+    @api
+    permission[pPlatform] setupProject(accountHash1: Text, accountHash2: Text, accountHash3: Text, accountHashBuyer: Text) {
+        // A Real Estate project is created between the platform, a bank and the project developer
+        // The Real Estate Project is looking for 20m CHF in external debt
+        projectPP = optionalOf<Project>(Project[pPlatform, pBank]("PP Project 1", CHF(50000000)));
+
+        // Project Developer adds Project Developer Data and Project Data
+        projectPP.getOrFail().returnProjectDataroom[pBank]().addData[pBank](ProjectDeveloperData[pPlatform, pBank]());
+        projectPP.getOrFail().returnProjectDataroom[pBank]().addData[pBank](ProjectData[pPlatform, pBank]());
+
+        // Get Project Default Share Class
+        projectPP.getOrFail().createShareClass[pBank]("A", projectPP.getOrFail().projectValue,100000,50000);
+
+        // The Bank adds the Due Diligence information to the platform
+        projectPP.getOrFail().returnProjectDataroom[pBank]().addData[pBank](DueDiligencePackage[pPlatform, pBank]());
+
+        // At this point the Structuring Process and the Market Soft Sounding take place, which are handled by the bank externally of the platform
+
+        // Add the Shareholder Agreement Template to the project
+        projectPP.getOrFail().returnProjectDataroom[pBank]().addData[pBank](
+            ShareholderAgreementTemplate[pPlatform, pBank](projectPP.getOrFail().returnShareClass[pBank]("A"))
+        );
+        projectPP.getOrFail().returnProjectDataroom[pBank]().data.
+            map(function(d: ProjectDataroomData) returns Optional<ShareholderAgreementTemplate> ->
+            match(d) {
+                is ShareholderAgreementTemplate -> (optionalOf<ShareholderAgreementTemplate>(d))
+                else -> (optionalOf<ShareholderAgreementTemplate>())
+            }).filter(function(i: Optional<ShareholderAgreementTemplate>) returns Boolean -> i.isPresent())
+            .firstOrNone().getOrFail().getOrFail().addISIN[pPlatform]("123456789012");
+
+        // create list of investors for the fund raising process and run the due diligence
+        investor1Accepts20000 = optionalOf<Investor>(Investor[pBank, pPlatform, pInvestor1]("Investor1", "", "investor1@mail.com", accountHash1));
+        investor2Declines = optionalOf<Investor>(Investor[pBank, pPlatform, pInvestor2]("Investor2", "", "investor2@mail.com", accountHash2));
+        investor3Accepts10000 = optionalOf<Investor>(Investor[pBank, pPlatform, pInvestor3]("Investor3", "", "investor3@mail.com", accountHash3));
+        investor4Buyer = optionalOf<Investor>(Investor[pBank, pPlatform, pInvestor4]("buyer", "", "buyer@mail.com", accountHashBuyer));
+
+        var allInvestors: Set<Investor> = setOf<Investor>(investor1Accepts20000.getOrFail(), investor2Declines.getOrFail(), investor3Accepts10000.getOrFail());
+
+        // make investors compliant
+        for (i in allInvestors) {
+            i.setCompliant[pBank](true);
+        };
+
+        // start fundraising process with a list of investors (investor 8 is not in the list of potential investors since it is in the black list)
+        projectPP.getOrFail().selectInvestors[pBank](
+            allInvestors
+        );
+
+        // fund investors
+        for (i in projectPP.getOrFail().selectedInvestors) {
+            i.returnWalletPerProject[pBank](projectPP.getOrFail()).setLiquidity[pBank](CHF(20000000));
+        };
+
+        // create the specifications for the offer that will be sent to each potential investor
+        var shareOfferSpecification = ShareOfferSpecifications(
+            minNumberOfShares = 1000,
+            maxNumberOfShares = 40000,
+            // The share prices is initially defined by the project value divided by the number of shares
+            initialSharePrice = projectPP.getOrFail().projectValue / projectPP.getOrFail().returnShareClass[pBank]("A").initialTotNumberOfShares
+        );
+
+        // send offer to potential investors. Investors from 1 to 7 receive the offer (8 is in the black list)
+        // the NDA is created as well
+        projectPP.getOrFail().sendOriginalOffers[pBank]("A", 2023-07-01T12:00Z, shareOfferSpecification);
+    };
+
+    @api
+    permission[pPlatform] setupInvestors() {
+        // INVESTOR 1
+        // investor 1 signs the NDA and gets access to "all project data"
+        var offerForInvestor1 = selectOfferForInvestor("A", projectPP.getOrFail(), investor1Accepts20000.getOrFail(), pInvestor1, pBank).getOrFail();
+        offerForInvestor1.returnNda[pInvestor1]().signNdaAndLegReq[pInvestor1]();
+        // investor 1 subscribes to the offer
+        var subscriptionAgreementForInvestor1: SubscriptionAgreement = offerForInvestor1.acceptOffer[pInvestor1](20000);
+
+        // investors who has not accepted the offer yet receive a reminder
+        projectPP.getOrFail().sendReminders[pPlatform]("A","Please mind the subscription deadline!");
+
+        // INVESTOR 2
+        // investor 2 signs the NDA and gets access to "all project data"
+        var offerForInvestor2 = selectOfferForInvestor("A", projectPP.getOrFail(), investor2Declines.getOrFail(), pInvestor2, pBank).getOrFail();
+        offerForInvestor2.returnNda[pInvestor2]().signNdaAndLegReq[pInvestor2]();
+        //get observer status
+        //sign Legal Documents -- add to signatories list on project on primary sign subscription agreement and on secondary market sign shareholder agreement
+        //then add to whitelist
+        // investor 2 declines to the offer
+        offerForInvestor2.declineOffer[pInvestor2]();
+
+        // investors 3 accepts the offer
+        var offerForInvestor3 = selectOfferForInvestor("A", projectPP.getOrFail(), investor3Accepts10000.getOrFail(), pInvestor3, pBank).getOrFail();
+        offerForInvestor3.returnNda[pInvestor3]().signNdaAndLegReq[pInvestor3]();
+        var subscriptionAgreementForInvestor4: SubscriptionAgreement = offerForInvestor3.acceptOffer[pInvestor3](10000);
+
+        // Setup buyer
+        investor4Buyer.getOrFail().setLexKollerCompliant[pBank](true);
+        investor4Buyer.getOrFail().setLawCompliant[pBank](true);
+        projectPP.getOrFail().signNDA[pBank, pInvestor4](investor4Buyer.getOrFail());
+        projectPP.getOrFail().selectInvestors[pBank](setOf<Investor>(investor4Buyer.getOrFail()));
+        investor4Buyer.getOrFail().returnWalletPerProject[pBank](projectPP.getOrFail()).setLiquidity[pBank](CHF(1000000));
+        projectPP.getOrFail().returnShareClass[pPlatform]("A").signShareholderAgreement[pBank, pInvestor4](investor4Buyer.getOrFail());
+    };
+
+    @api
+    permission[pPlatform] setupToken() {
+        // Bank applies the allocation rule in the fundraising contract and confirms/rejects the investor subscriptions for the allocated amount
+        // Investors 1, 4, 5, 6 get a confirmation of their subscription. Investors 7 gets the subscription rejected
+        // rePlatform issues tokens for the confirmed subscriptions
+        projectPP.getOrFail().confirmSubscriptionAgreements[pBank]("A");
+    };
+
+    @api
+    permission[pPlatform] transferToken(accountHashBuyer: Text) {
+        // Investor 1 decides to transfer his token to Investor 4
+        var investor1 = investor1Accepts20000.getOrFail();
+        var walletList = investor1.walletList.toList().firstOrNone().getOrFail();
+        var transferedToken = walletList.tokens.toList().firstOrNone().getOrFail();
+        var tradeAgreement = OffChainTradeAgreement[pBank, pInvestor1, pInvestor4](
+            investor4Buyer.getOrFail(),
+            now().plus(days(2)),
+            transferedToken);
+        tradeAgreement.buyerAgree[pInvestor4]();
+        tradeAgreement.sellerAgree[pInvestor1]();
+    };
+}
