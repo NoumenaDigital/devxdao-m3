@@ -87,13 +87,13 @@ protocol[pPlatform, pBank] Project(name: Text, var projectValue: CHF) {
         }
     };
 
-    permission[pPlatform | pBank] addWhitelistedInvestor(investor: Investor) | created, subscribed {
+    permission[pBank] addWhitelistedInvestor(investor: Investor) | created, subscribed {
         guard(selectedInvestors.contains(investor), "The investor first must have been selected to be whitelisted");
         guard(this.returnShareholderAgreementPerInvestor[pBank](investor).isPresent(), "There is no Shareholder Agreement present");
         whiteListedInvestors = whiteListedInvestors.with(investor);
     };
 
-    permission[pPlatform | pBank] removeWhitelistedInvestor(investor: Investor) | created, subscribed {
+    permission[pBank] removeWhitelistedInvestor(investor: Investor) | created, subscribed {
         whiteListedInvestors = whiteListedInvestors.without(investor);
     };
 
