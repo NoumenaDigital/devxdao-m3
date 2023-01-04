@@ -15,6 +15,10 @@ import java.security.PublicKey
 
 data class TokenMetaData(val type: String)
 
+/**
+ * ContractClient interface:
+ * - provides interface for the Casper blockchain interactions
+ */
 interface ContractClient {
     fun mint(
         contractNamedKey: String,

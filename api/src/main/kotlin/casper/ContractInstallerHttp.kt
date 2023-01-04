@@ -8,6 +8,10 @@ import org.http4k.format.Jackson.auto
 
 data class InstallCargo(var name: String, var symbol: String, val gas: String = "165000000000")
 
+/**
+ * ContractInstallerHttp class:
+ * - is an HTTP wrapper for Casper smart contract installer
+ */
 class ContractInstallerHttp(var contractInstaller: ContractInstaller = ContractInstallerImpl()) {
 
     private val installCargoLens = Body.auto<InstallCargo>().toLens()

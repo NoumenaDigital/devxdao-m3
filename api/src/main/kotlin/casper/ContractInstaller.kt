@@ -13,6 +13,10 @@ import java.io.InputStream
 data class Property(val name: String, val description: String, val required: Boolean)
 data class Properties(val properties: Map<String, Property>)
 
+/**
+ * ContractInstaller interface:
+ * - provides interface for installing (deploying) the contract to Casper blockchain
+ */
 interface ContractInstaller {
     fun installContract(name: String, symbol: String, gas: String = "165000000000"): String
 }

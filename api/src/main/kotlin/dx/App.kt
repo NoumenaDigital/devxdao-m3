@@ -37,6 +37,7 @@ val contractClient = ContractClientHttp()
 private val logger = KotlinLogging.logger {}
 
 val app: HttpHandler = routes(
+    // Endpoints used for demo scenario
     "/dx" bind routes(
         "/demo" bind Method.POST to demo.create(),
         "/demo/{protocolId}/setupInvestors" bind Method.POST to demo.setupInvestors(),
@@ -44,6 +45,7 @@ val app: HttpHandler = routes(
         "/demo/{protocolId}/setupProject" bind Method.POST to demo.setupProject(),
         "/demo/{protocolId}/transferToken" bind Method.POST to demo.transferToken()
     ),
+    // Endpoints used for other interactions and testing
     "/casper" bind routes(
         "/install_contract" bind Method.POST to contractInstaller.installContract(),
         "/mint" bind Method.POST to contractClient.mint(),
@@ -54,6 +56,12 @@ val app: HttpHandler = routes(
     )
 )
 
+/**
+ * Handler of the SSE (Server Sent Events) emitted by the Platform.
+ * Is responsible for:
+ * - listening on SSE events
+ * - triggering necessary actions on the Casper blockchain
+ */
 val sse: SseHandler = sse(
     "/dx/sse/start" bind { _: Sse ->
         sseReaderClient.notifications(-1, authProvider(), false)
@@ -75,6 +83,7 @@ fun main() {
         sse = sse
     ).asServer(Undertow(9000)).start()
 
+    // The Casper blockchain events consumers
     contractEventConsumer.consumeDeployAccepted()
     contractEventConsumer.consumeDeployProcessed()
 

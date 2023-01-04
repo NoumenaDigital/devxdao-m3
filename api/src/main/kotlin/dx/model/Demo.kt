@@ -20,6 +20,10 @@ import org.http4k.core.Status
 import org.http4k.core.with
 import org.http4k.format.Jackson.auto
 
+/**
+ * Demo class:
+ * - is a convenience class providing interface for NPL implementation of the Demo
+ */
 class Demo(client: EngineClientWriter) {
 
     private val proxy = DemoProxy(client)
