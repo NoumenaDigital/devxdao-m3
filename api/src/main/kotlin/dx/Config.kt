@@ -6,13 +6,11 @@ import com.noumenadigital.platform.engine.client.UserConfig
 
 const val ISSUER = "dxuser1"
 
-const val bank = "bank"
 const val pinvestor1 = "investor1"
 const val pinvestor2 = "investor2"
 const val pinvestor3 = "investor3"
 const val pinvestor4 = "investor4"
 const val rePlatform = "rePlatform"
-const val pBuyer = "buyer"
 
 val engineURL: String = System.getenv("ENGINE_URL") ?: "http://localhost:12000"
 val keycloakURL: String = System.getenv("KEYCLOAK_URL") ?: "http://localhost:11000"

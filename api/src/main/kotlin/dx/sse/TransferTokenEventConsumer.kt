@@ -9,14 +9,20 @@ import java.util.function.Consumer
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * TokenCreateEventConsumer class:
+ * - is SSE event consumer
+ * - listens on event emitted on token creation in the NPL Engine
+ * - triggers the token minting on the Casper blockchain
+ */
 class TransferTokenEventConsumer : Consumer<ClientFluxNotification> {
     private val contractClient = ContractClientImpl()
     override fun accept(flux: ClientFluxNotification) {
         val payload = flux.payload
         if (payload.name == TransferTokenFacade.typeName && payload.arguments.isNotEmpty()) {
-            val sourceAccountHash = (payload.arguments[0] as ClientTextValue).value
-            val targetAccountHash = (payload.arguments[1] as ClientTextValue).value
-            val tokenId = (payload.arguments[2] as ClientTextValue).value
+            val sourceAccountHash = (payload.arguments[0] as ClientTextValue).value // Always a first argument as defined by NPL notification
+            val targetAccountHash = (payload.arguments[1] as ClientTextValue).value // Always second argument
+            val tokenId = (payload.arguments[2] as ClientTextValue).value // Always third argument
 
             try {
                 contractClient.transferFrom(

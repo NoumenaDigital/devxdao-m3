@@ -9,12 +9,18 @@ import java.util.function.Consumer
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * ProjectCreateEventConsumer class:
+ * - is SSE event consumer
+ * - listens on project's creation
+ * - triggers the contract deployment to the Casper blockchain
+ */
 class ProjectCreateEventConsumer : Consumer<ClientFluxNotification> {
     private val contractInstaller = ContractInstallerImpl()
     override fun accept(flux: ClientFluxNotification) {
         val payload = flux.payload
         if (payload.name == CreateProjectFacade.typeName && payload.arguments.isNotEmpty()) {
-            val contractId = (payload.arguments[0] as ClientProtocolReferenceValue).value
+            val contractId = (payload.arguments[0] as ClientProtocolReferenceValue).value // Always a first argument as defined by NPL notification
 
             try {
                 // User needs to check if contract has been deployed

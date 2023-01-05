@@ -34,6 +34,10 @@ data class AddressWhiteListCargo(
     val address: String
 )
 
+/**
+ * ContractClientHttp class:
+ * - is an HTTP wrapper for Casper smart contract interactions
+ */
 class ContractClientHttp(var client: ContractClient = ContractClientImpl()) {
 
     private val mintCargoLens = Body.auto<MintCargo>().toLens()

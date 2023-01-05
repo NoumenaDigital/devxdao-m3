@@ -18,6 +18,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * JSON object for DeployAccepted Casper event
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class DeployAccepted(
     var hash: String? = null,
@@ -31,6 +34,9 @@ data class DeployAccepted(
     }
 }
 
+/**
+ * JSON object for DeployProcessed Casper event
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class DeployProcessed(
     var deploy_hash: String? = null,
@@ -64,10 +70,15 @@ data class TokenData(
     val tokenId: String
 )
 
+// Helper collections
 val deploysTransfers: ConcurrentHashMap<String, DeployTransfer> = ConcurrentHashMap()
 val deploysTokens: ConcurrentHashMap<String, TokenData> = ConcurrentHashMap()
 val mintedTokens: ConcurrentHashMap<String, String> = ConcurrentHashMap()
 
+/**
+ * ContractEventConsumer class:
+ * - is a Casper events consumer
+ */
 class ContractEventConsumer(
     client: EngineClientWriter,
     private val jsonDecoderMaxBufferSize: Int = 8 * 1024 * 1024, // 8MB
@@ -98,8 +109,14 @@ class ContractEventConsumer(
 
     private val token = Token(client)
 
+    // Helper method for extracting the Casper account address from the Casper network events
     private fun ByteArray.toHex(): String = joinToString(separator = "") { eachByte -> "%02x".format(eachByte) }
 
+    /**
+     * consumeDeployAccepted:
+     * - listens on DeployAccepted events
+     * - registers the accepted token transfers and account addresses to be used for DeployProcessed events
+     */
     fun consumeDeployAccepted() {
         eventsDeploy.subscribe(
             { content ->
@@ -120,11 +137,12 @@ class ContractEventConsumer(
                         val args = session.args
                         val deployHash = deploy.hash
                         val deployTransfer = DeployTransfer(
-                            (args[0].value.parsed as BigInteger).toString(),
-                            args[1].value.bytes.toHex().drop(2),
-                            args[2].value.bytes.toHex().drop(2)
+                            (args[0].value.parsed as BigInteger).toString(), // Token id
+                            args[1].value.bytes.toHex().drop(2), // Source account
+                            args[2].value.bytes.toHex().drop(2) // Destination account
                         )
 
+                        // Store the transfer for this deploy
                         deploysTransfers[deployHash.toString()] = deployTransfer
                     } catch (error: Exception) {
                         logger.info { "Not a StoredContractByHash or wrong endpoint called" }
@@ -136,6 +154,12 @@ class ContractEventConsumer(
         )
     }
 
+    /**
+     * consumeDeployProcessed:
+     * - listens on DeployProcessed events
+     * - dispatches DeployProcessed events into token creation and token transfer
+     * - notifies the NPL Platform on token creation and token transfer
+     */
     fun consumeDeployProcessed() {
         eventsMain.subscribe(
             { content ->

@@ -14,16 +14,21 @@ import java.util.function.Consumer
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * TokenCreateEventConsumer class:
+ * - is SSE event consumer
+ * - listens on event emitted on token creation in the NPL Engine
+ * - triggers the token minting on the Casper blockchain
+ */
 class TokenCreateEventConsumer : Consumer<ClientFluxNotification> {
     private val contractClient = ContractClientImpl()
     override fun accept(flux: ClientFluxNotification) {
         val payload = flux.payload
         if (payload.name == CreateTokenFacade.typeName && payload.arguments.isNotEmpty()) {
-            val contractHash = (payload.arguments[0] as ClientTextValue).value
-            val accountHash = (payload.arguments[1] as ClientTextValue).value
-            val tokenProtocolId = (payload.arguments[2] as ClientProtocolReferenceValue).value
+            val accountHash = (payload.arguments[1] as ClientTextValue).value // Always a second argument as defined by NPL notification
+            val tokenProtocolId = (payload.arguments[2] as ClientProtocolReferenceValue).value // Always third argument
 
-            val tokenId = UUID.randomUUID().toString()
+            val tokenId = UUID.randomUUID().toString() // Generate token UUID used as token identifier for the Casper blockchain
 
             try {
                 val deployHash = contractClient.mint(
@@ -34,6 +39,7 @@ class TokenCreateEventConsumer : Consumer<ClientFluxNotification> {
                     TokenMetaData("{\"type\":\"INITIAL\"}")
                 )
 
+                // In order to identify accepted and processed deploys, store the deploy hash
                 deploysTokens[deployHash] = TokenData(
                     tokenId = tokenId,
                     protocolId = tokenProtocolId.toString()
