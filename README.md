@@ -10,7 +10,7 @@ It relies on the Casper CEP-78 token standard provided in milestone 2 and in the
     3. Fulfillment of Core Requirements
 2. Code Documentation
    1. Architecture Description
-   2. Modifications
+   2. Noumena Platform NPL Documentation
    3. Building and testing on the local environment
    4. Demo & testing instructions
 
@@ -176,6 +176,16 @@ This demo file contains a scenario including all main steps developed during thi
 For the NPL code which run during the integration test or within the testing environment, refer to demo.npl.
 
 The npl-demo.npl is run automatically as a part of the build process of the provided test environment.  
+
+### Building and testing on the local environment
+
+There are the tests in the Casper Directory for the smart contract, which can be executed from within `casper` directory.
+For details, please see `casper/README.md` in `Building and testing on the local environment` section.
+For the tests on the Noumena Protocol Language and the API module tests, this requires a copy of the Noumena Platform. 
+As the Noumena Platform is proprietary, this would require a license. The tests are run automatically in the environment 
+as defined in `.github/workflows/on-push.yml` Github action.
+To obtain a license for the Noumena Platform, please reach out to info@noumenadigital.com.
+
 
 ### Demo & Testing Instructions
 
