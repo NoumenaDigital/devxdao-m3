@@ -23,7 +23,7 @@
         <kotlin.version>1.6.0</kotlin.version>
         <kotlin.coroutines.version>1.5.2</kotlin.coroutines.version>
         <http4k.version>4.13.0.0</http4k.version>
-        <logback.version>1.2.6</logback.version>
+        <logback.version>1.2.13</logback.version>
         <rest-assured.version>4.4.0</rest-assured.version>
         <casper-java-sdk.version>0.3.9</casper-java-sdk.version>
         <casper-syntifi-java-sdk.version>0.2.1</casper-syntifi-java-sdk.version>
